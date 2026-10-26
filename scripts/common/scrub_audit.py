@@ -35,6 +35,24 @@ def _fragments(*parts: str) -> str:
     return "".join(parts)
 
 
+def _chars(codepoints: tuple[int, ...]) -> str:
+    """Build a probe string from code points.
+
+    Reading the characters off a numeric list keeps this file free of any
+    literal copy of the thing being hunted -- a readable probe string in the
+    source would itself be a leak, and would also trip the audit.
+    """
+    return "".join(chr(cp) for cp in codepoints)
+
+
+# Probe strings that must never appear verbatim in the repository. Built from
+# code points so the source file does not contain them.
+_CONTACT_PROBE = _chars((0x7AEF, 0x54E5))  # a personal contact nickname
+_GROUP_PROBE = _chars((0x63A8, 0x7279, 0x8FD0, 0x8425, 0x7FA4))  # a group name
+_VM_HOST_PROBE = _chars((0x96F6, 0x4E5D, 0x4E09, 0x53F7, 0x865A, 0x62DF, 0x673A))
+_SSH_USER_PROBE = _chars((0x63, 0x6C, 0x61, 0x75, 0x64, 0x65))
+
+
 # (label, pattern) -- assembled from fragments on purpose.
 _PATTERNS: list[tuple[str, str]] = [
     ("account id (active)", _fragments(r"wxid_", r"[a-z0-9]{16}")),
@@ -52,17 +70,16 @@ _PATTERNS: list[tuple[str, str]] = [
     # regardless of what the parent folder is called.
     ("named user path", _fragments(r"C:[\\/]+Users[\\/]+", r"(?![<$*][^\\\"'\s]*[\\/])(?!\$)[^\\\"'/\s<>*]+[\\/]+(?:Documents|Document)[\\/]+", r"xwechat_files")),
     ("personal handle", _fragments(r"@", r"[Ss]oran", r"lan")),
-    ("contact name", _fragments(r"端", r"哥")),
-    # The group-name probe is assembled from unrelated fragments for the same
-    # reason as the wxid prefix: a literal match string in this file would
-    # itself reproduce a real group name.
-    ("group name fragment", _fragments(r"示例", r"运营", r"群")),
+    ("contact name", _CONTACT_PROBE),
+    # The group-name probe is built from code points for the same reason:
+    # a literal match string in this file would itself be the leak.
+    ("group name fragment", _GROUP_PROBE),
     ("phone number", r"\b1[3-9]\d{9}\b"),
     # Hostname of the throwaway VM used during the original spike. It is a
     # proper noun of the author's own machine, not an example.
-    ("vm hostname", _fragments(r"零九三号", r"虚拟机")),
+    ("vm hostname", _VM_HOST_PROBE),
     # SSH account name used on that VM.
-    ("ssh account", _fragments(r"user `", r"claude`")),
+    ("ssh account", _fragments(r"user `", _SSH_USER_PROBE, "`")),
 ]
 _COMPILED = [(label, re.compile(rx)) for label, rx in _PATTERNS]
 

@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import os
 from pathlib import Path
 from types import SimpleNamespace
@@ -38,9 +39,16 @@ def test_key_check_warns_on_broad_posix_permissions(tmp_path):
 
 def test_unsupported_platform_stops_platform_checks(monkeypatch, tmp_path):
     monkeypatch.setattr(doctor, "_codex_mcp_check", lambda _path: doctor.Check("mcp", "warn", "none"))
+    monkeypatch.setattr(doctor, "_workbuddy_mcp_check", lambda _path: doctor.Check("mcp:workbuddy", "warn", "none"))
     monkeypatch.setattr(doctor, "_skill_discovery_check", lambda _path: doctor.Check("skill", "warn", "none"))
     checks = doctor.collect_checks(system="Linux", skill_dir=str(tmp_path))
-    assert [item.name for item in checks] == ["platform", "python", "skill", "mcp"]
+    assert [item.name for item in checks] == [
+        "platform",
+        "python",
+        "skill",
+        "mcp",
+        "mcp:workbuddy",
+    ]
     assert checks[0].status == "fail"
 
 
@@ -76,3 +84,62 @@ def test_mac_key_database_check_fails_without_message_database(tmp_path):
     check = doctor._mac_key_database_check(str(tmp_path), [str(tmp_path)])
 
     assert check.status == "fail"
+
+
+def test_workbuddy_mcp_check_reports_missing_config(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+
+    check = doctor._workbuddy_mcp_check(str(tmp_path))
+
+    assert check.status == "warn"
+    assert "not found" in check.detail
+
+
+def test_workbuddy_mcp_check_detects_registration(monkeypatch, tmp_path):
+    home = tmp_path / "home"
+    (home / ".workbuddy").mkdir(parents=True)
+    server = tmp_path / "server.py"
+    server.write_text("", encoding="utf-8")
+    (home / ".workbuddy" / "mcp.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "wechat-local": {"command": "python", "args": [str(server)]}
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+
+    check = doctor._workbuddy_mcp_check(str(tmp_path))
+
+    assert check.status == "ok"
+    assert "registered" in check.detail
+
+
+def test_workbuddy_mcp_check_flags_foreign_checkout(monkeypatch, tmp_path):
+    home = tmp_path / "home"
+    (home / ".workbuddy").mkdir(parents=True)
+    other = tmp_path / "elsewhere" / "server.py"
+    other.parent.mkdir(parents=True)
+    other.write_text("", encoding="utf-8")
+    (home / ".workbuddy" / "mcp.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "wechat-local": {"command": "python", "args": [str(other)]}
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+
+    check = doctor._workbuddy_mcp_check(str(tmp_path))
+
+    assert check.status == "warn"
+    assert "another checkout" in check.detail

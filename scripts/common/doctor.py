@@ -175,6 +175,35 @@ def _codex_mcp_check(skill_dir: str) -> Check:
     return Check("mcp", "ok", "wechat MCP is enabled")
 
 
+def _workbuddy_mcp_check(skill_dir: str) -> Check:
+    """Check the MCP registration WorkBuddy actually reads.
+
+    The Codex CLI check above only covers Codex.  WorkBuddy keeps its own
+    config in ~/.workbuddy/mcp.json, and a fresh install writes the entry
+    there, so verify it points at this checkout.
+    """
+    config = os.path.expanduser("~/.workbuddy/mcp.json")
+    try:
+        with open(config, encoding="utf-8") as fh:
+            servers = json.load(fh).get("mcpServers", {})
+    except (OSError, ValueError):
+        return Check("mcp:workbuddy", "warn", "WorkBuddy MCP config not found", "Run setup again")
+    entry = servers.get("wechat-local")
+    if not entry:
+        return Check("mcp:workbuddy", "warn", "wechat-local not registered", "Run setup again")
+    args = entry.get("args") or []
+    registered = args[0] if args else ""
+    expected = os.path.join(skill_dir, "server.py")
+    if registered and not _same_path(registered, expected):
+        return Check(
+            "mcp:workbuddy",
+            "warn",
+            f"MCP points to another checkout: {registered}",
+            "Run setup from this checkout",
+        )
+    return Check("mcp:workbuddy", "ok", "wechat-local registered")
+
+
 def _skill_discovery_check(skill_dir: str) -> Check:
     official = os.path.expanduser("~/.agents/skills/wechat-decrypt")
     if _same_path(official, skill_dir):
@@ -204,6 +233,7 @@ def collect_checks(system: str | None = None, skill_dir: str = SKILL_DIR) -> lis
         ),
         _skill_discovery_check(skill_dir),
         _codex_mcp_check(skill_dir),
+        _workbuddy_mcp_check(skill_dir),
     ]
 
     if system not in {"Darwin", "Windows"}:

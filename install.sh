@@ -61,26 +61,73 @@ fi
 # ---------------------------------------------------------------------------
 step "2/7  探测微信安装位置"
 
-WECHAT_DIR=""
-for c in "/c/Program Files/Tencent/WeChat" "/c/Program Files (x86)/Tencent/WeChat" \
-         "/d/Weixin" "/c/Program Files/Tencent/Weixin"; do
-  [ -d "$c" ] && { WECHAT_DIR="$c"; break; }
-done
-# 找 Weixin.exe / WeChat.exe
+# 微信可执行文件：可能在安装根目录，也可能在版本子目录里（/d/Weixin/4.1.15.56/Weixin.exe）
 EXE=""
-for c in /c/Program\ Files/Tencent/WeChat /d/Weixin/* /c/Program\ Files/Tencent/Weixin; do
+for c in \
+  "/c/Program Files/Tencent/WeChat" "/c/Program Files (x86)/Tencent/WeChat" \
+  "/c/Program Files/Tencent/Weixin" "/d/Weixin" "/e/Weixin" \
+  "/d/Program Files/Tencent/WeChat" "/e/Program Files/Tencent/WeChat"; do
+  [ -d "$c" ] || continue
   for e in "$c"/Weixin.exe "$c"/WeChat.exe; do
     [ -f "$e" ] && { EXE="$e"; break; }
   done
   [ -n "$EXE" ] && break
+  # 版本子目录
+  for sub in "$c"/*/; do
+    for e in "$sub"Weixin.exe "$sub"WeChat.exe; do
+      [ -f "$e" ] && { EXE="$e"; break; }
+    done
+    [ -n "$EXE" ] && break
+  done
+  [ -n "$EXE" ] && break
 done
-[ -n "$EXE" ] && ok "微信程序: $EXE" || warn "没找到微信程序（请确认已安装微信 4.0+）"
+if [ -n "$EXE" ]; then
+  ok "微信程序: $EXE"
+  # 顺手确认版本号（微信 4.0+ 才支持本方案）
+  VER=$(ls -d "$(dirname "$EXE")"/*/ 2>/dev/null | head -1)
+  [ -n "$VER" ] && echo -e "    ${DIM}版本目录: ${VER%/}${NC}"
+else
+  warn "没找到微信程序（请确认已安装微信 4.0+）"
+  echo -e "    ${DIM}不影响后续流程，提密时再确认即可${NC}"
+fi
 
 # ---------------------------------------------------------------------------
 step "3/7  探测微信数据目录"
 
-DATA_ROOT="${1:-}"
-if [ -z "$DATA_ROOT" ]; then
+# 路径归一化：把 Windows 风格 (D:\...) 与 Git Bash 风格 (/d/...) 互相转换。
+# 用 Python 做，避免 shell 转义地狱（反斜杠在 bash 里是转义字符）。
+PY_PATH_HELPER="$REPO_DIR/.path_helper.py"
+cat > "$PY_PATH_HELPER" <<'PYHELPER'
+import re, sys
+
+def to_bash(p):
+    p = str(p).replace('\\', '/')
+    m = re.match(r'^([A-Za-z]):/(.*)$', p)
+    if m:
+        return '/' + m.group(1).lower() + '/' + m.group(2)
+    return p
+
+def to_win(p):
+    p = str(p).replace('/', '\\')
+    m = re.match(r'^([A-Za-z]):\\?(.*)$', p)
+    if m:
+        return m.group(1).upper() + ':\\' + m.group(2).lstrip('\\')
+    m = re.match(r'^/([A-Za-z])/(.*)$', str(p).replace('\\', '/'))
+    if m:
+        return m.group(1).upper() + ':\\' + m.group(2).replace('/', '\\')
+    return p
+
+if __name__ == '__main__':
+    mode, value = sys.argv[1], sys.argv[2]
+    print(to_bash(value) if mode == 'bash' else to_win(value))
+PYHELPER
+path_bash() { "$PY" "$PY_PATH_HELPER" bash "$1"; }
+path_win()  { "$PY" "$PY_PATH_HELPER" win  "$1"; }
+
+DATA_ROOT_RAW="${1:-}"
+if [ -n "$DATA_ROOT_RAW" ]; then
+  DATA_ROOT="$(path_bash "$DATA_ROOT_RAW")"
+else
   for c in \
     "/d/Document/xwechat_files" "/c/Document/xwechat_files" "/c/Users/$USERNAME/Documents/xwechat_files" \
     "/e/Document/xwechat_files" "/d/xwechat_files" "/c/xwechat_files" \
@@ -92,14 +139,15 @@ if [ -z "$DATA_ROOT" ]; then
   echo -e "    ${YEL}没自动找到数据目录。${NC}"
   echo -e "    ${DIM}常见位置：微信设置 → 文件管理 → 打开文件夹${NC}"
   echo -e "    ${DIM}格式示例：<数据根目录>${NC}"
-  read -rp "    请手动输入数据目录（回车用默认 C:\Users\$USERNAME\Documents\xwechat_files）: " DATA_ROOT
-  DATA_ROOT="${DATA_ROOT:-C:/Users/$USERNAME/Documents/xwechat_files}"
+  read -rp "    请手动输入数据目录（回车用默认 C:\\Users\\$USERNAME\\Documents\\xwechat_files）: " DATA_ROOT_RAW
+  DATA_ROOT="$(path_bash "${DATA_ROOT_RAW:-C:/Users/$USERNAME/Documents/xwechat_files}")"
 fi
+DATA_ROOT_WIN="$(path_win "$DATA_ROOT")"
 
 # 验证：目录里应该有 db_storage
 if [ -d "$DATA_ROOT" ] && ls -d "$DATA_ROOT"/*/db_storage >/dev/null 2>&1; then
   ACCOUNTS=$(ls -d "$DATA_ROOT"/*/db_storage 2>/dev/null | wc -l)
-  ok "数据目录: $DATA_ROOT （$ACCOUNTS 个账号）"
+  ok "数据目录: $DATA_ROOT_WIN （$ACCOUNTS 个账号）"
 else
   warn "目录结构异常：$DATA_ROOT 下没找到 */db_storage"
   echo -e "    ${DIM}如果微信数据在别处，请重新运行并指定路径${NC}"
@@ -130,7 +178,7 @@ echo -e "    ${DIM}安装 frida / pycryptodome / zstandard / mcp（首次约 2-5
 step "5/7  创建目录联接（让工具能自动发现数据目录）"
 
 LINK_DIR="C:/Users/$USERNAME/Documents/xwechat_files"
-TARGET_WIN=$(echo "$DATA_ROOT" | sed 's|^/c/|C:/|; s|^/d/|D:/|; s|^/e/|E:/|; s|/|\\|g')
+TARGET_WIN="$DATA_ROOT_WIN"
 LINK_WIN="C:\\Users\\$USERNAME\\Documents\\xwechat_files"
 if [ ! -e "$LINK_DIR" ]; then
   cmd.exe /c "mklink /J \"$LINK_WIN\" \"$TARGET_WIN\"" >/dev/null 2>&1 && \
@@ -146,11 +194,22 @@ step "6/7  注册 MCP server 到 WorkBuddy"
 MCP_DIR="$HOME/.workbuddy"
 MCP_FILE="$MCP_DIR/mcp.json"
 mkdir -p "$MCP_DIR"
-"$VPY" - "$MCP_FILE" "$REPO_DIR" "$DATA_ROOT" <<'PYEOF'
+"$VPY" - "$MCP_FILE" "$REPO_DIR" "$DATA_ROOT_WIN" <<'PYEOF'
 import json, os, sys
+
 mcp_file, repo_dir, data_root = sys.argv[1], sys.argv[2], sys.argv[3]
-repo_win = repo_dir.replace('/', '\\')
-root_win = data_root.replace('/', '\\')
+
+
+def to_win(path):
+    """Normalise any path form into a Windows path (D:\\...)."""
+    p = str(path).replace('/', '\\')
+    while '\\\\' in p[3:]:
+        p = p[:3] + p[3:].replace('\\\\', '\\')
+    return p
+
+
+repo_win = to_win(repo_dir)
+root_win = to_win(data_root)
 
 config = {}
 if os.path.exists(mcp_file):
@@ -167,7 +226,8 @@ servers['wechat-local'] = {
 }
 with open(mcp_file, 'w', encoding='utf-8') as fh:
     json.dump(config, fh, indent=2, ensure_ascii=False)
-print('  已写入', mcp_file)
+print(f'  已写入 {mcp_file}')
+print(f'  数据根目录 {root_win}')
 PYEOF
 ok "MCP server: wechat-local"
 

@@ -19,6 +19,7 @@
 | [windows-wal-snapshots.md](windows-wal-snapshots.md) | WAL 快照：为什么要做一致性读取 |
 | [chat-list-pagination.md](chat-list-pagination.md) | 会话列表分页的坑 |
 | [media-manifest-proposal.md](media-manifest-proposal.md) | 富媒体导出清单的设计提案 |
+| [pull-request-archive.md](pull-request-archive.md) | 两个已合并 PR 的内容存档（XML 解析 + 搜索性能、账号无关化） |
 
 ## 研发过程记录
 

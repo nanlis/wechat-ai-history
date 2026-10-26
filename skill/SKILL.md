@@ -19,16 +19,65 @@ description: "读取本机微信 4.x 聊天记录（群聊/好友消息、全文
 
 ## 已就绪的环境（不要重复安装）
 
+**不要假设固定安装路径** —— 换一台电脑路径就变了。唯一可靠的来源是
+MCP server 配置（install.sh 写进去的），从里面读出仓库位置和数据根目录：
+
+```bash
+# 从 MCP 配置解析真实路径（跨平台通用）
+eval "$("$PY_BOOT" - <<'PYEOF'
+import json, os, shlex
+
+def _home():
+    # Windows 的 expanduser 走 USERPROFILE，Git Bash 的 HOME 可能不同，
+    # 两个都试一遍，取到配置文件的概率最高。
+    for var in ("HOME", "USERPROFILE"):
+        base = os.environ.get(var)
+        if base:
+            return base
+    return os.path.expanduser("~")
+
+cfg = os.path.join(_home(), ".workbuddy", "mcp.json")
+try:
+    with open(cfg, encoding="utf-8") as fh:
+        srv = json.load(fh)["mcpServers"]["wechat-local"]
+except Exception:
+    srv = {}
+
+def _win(path):
+    # 统一成 Windows 原生分隔符，避免 D:/a//b 这类混合斜杠
+    return path.replace("/", "\\") if os.name == "nt" else path
+
+repo = _win(os.path.dirname(srv.get("args", ["server.py"])[0]))
+root = _win(srv.get("env", {}).get("WECHAT_DATA_ROOT", ""))
+print("REPO=%s" % shlex.quote(repo))
+print("DATA_ROOT=%s" % shlex.quote(root))
+PYEOF
+)"
+```
+
+其中 `PY_BOOT` 用 `python` / `python3` 均可（只读 JSON，不需要项目依赖）。
+若 MCP 尚未注册，先读 `~/.workbuddy/mcp.json` 里的 `wechat-local` 段落，
+或直接让用户跑 `bash install.sh` 重新注册。
+
 | 项 | 值 |
 |---|---|
 | MCP server | `wechat-local`（已注册到 WorkBuddy 的 `mcp.json`） |
 | 工具数量 | 6 个，见下表 |
-| 数据根目录 | `D:\WeChatData\xwechat_files` |
-| 内核仓库 | `<REPO>` |
-| 活跃账号 | `wxid_example01_dev_a` |
-| 已解密 | 21 个库 / 1.3GB / 1,157,006 条消息 / 7,521 会话 |
+| 数据根目录 | `$DATA_ROOT`（从 MCP 配置读） |
+| 内核仓库 | `$REPO`（从 MCP 配置读） |
+| 明文库 | `$REPO/decrypted/*/db_storage/` |
+
+Python 解释器：`$REPO/.venv/Scripts/python.exe`（Windows）或 `$REPO/.venv/bin/python`（macOS）。
 
 **如果 MCP 工具不可用**，退回到命令行（见「没有 MCP 时」一节），不要重新装包或重新解密。
+
+**不确定环境时，先跑诊断**（只读，不改任何东西）：
+
+```bash
+"$REPO/.venv/Scripts/python.exe" "$REPO/scripts/common/doctor.py" --json
+```
+
+它会告诉你密钥在不在、库能不能读、MCP 有没有注册。
 
 ## 工具路由表
 
@@ -80,48 +129,57 @@ MCP 工具没直接暴露时，用命令行读明文库（路径见下）。
 ## 没有 MCP 时（降级路径）
 
 ```bash
-cd /d/Projects/wxdec-skill
-V=.venv/Scripts/python.exe
+# REPO / DATA_ROOT 按上面「已就绪的环境」解析出来
+V="$REPO/.venv/Scripts/python.exe"
 
 # 列群（带群名）
-$V scripts/windows/wxread.py list
+"$V" "$REPO/scripts/windows/wxread.py" list
 
 # 读某群
-$V scripts/windows/wxread.py messages "00000000000@chatroom" --limit 100
+"$V" "$REPO/scripts/windows/wxread.py" messages "00000000000@chatroom" --limit 100
 
 # 导出 txt（5.5 万条约 40MB）
-$V scripts/windows/wxread.py export "00000000000@chatroom" /tmp/out.txt
+"$V" "$REPO/scripts/windows/wxread.py" export "00000000000@chatroom" /tmp/out.txt
 
 # 全文搜索（跨两个分片库）
-$V scripts/windows/wxread.py search "某联系人"
+"$V" "$REPO/scripts/windows/wxread.py" search "某联系人"
+```
+
+也可以直接用跨平台查询内核，输出 JSON：
+
+```bash
+"$V" "$REPO/scripts/common/query.py" list --json
+"$V" "$REPO/scripts/common/query.py" search "关键词" -d 365 -n 50 --json
 ```
 
 明文库位置（只读，不要改）：
-`<REPO>\decrypted\wxid_example01_dev_a\db_storage\`
+`$REPO/decrypted/*/db_storage/`
 
 ## 密钥失效时（微信重启/升级后读不到数据）
 
 症状：MCP 工具报找不到库 / 返回 0 条。
 
 处理顺序：
-1. 确认微信在运行：`frida` 枚举 `Weixin.exe`（**不要用 `tasklist`**，沙箱下返回 0 行）
-2. 重新提密钥：
+1. 先跑诊断确认是不是密钥问题：`"$V" "$REPO/scripts/common/doctor.py" --json`
+2. 确认微信在运行：`frida` 枚举 `Weixin.exe`（**不要用 `tasklist`**，沙箱下返回 0 行）
+3. 重新提密钥：
    ```bash
-   cd /d/Projects/wxdec-skill
-   WECHAT_DATA_ROOT="D:\WeChatData\xwechat_files" .venv/Scripts/python.exe \
-     scripts/windows/hook_raw_key_broad.py 900
+   WECHAT_DATA_ROOT="$DATA_ROOT" "$REPO/.venv/Scripts/python.exe" \
+     "$REPO/scripts/windows/hook_raw_key_broad.py" 900
    ```
    脚本会挂上 SHA-512 钩子，**需要用户在微信里登录一次**（登录会重新派生密钥），
-   密钥落在 `key_windows.txt`。
-3. 重新解密：
+   密钥落在 `$REPO/key_windows.txt`。
+4. 重新解密：
    ```bash
-   WECHAT_DATA_ROOT="D:\WeChatData\xwechat_files" .venv/Scripts/python.exe scripts/windows/decrypt_all.py
+   WECHAT_DATA_ROOT="$DATA_ROOT" "$REPO/.venv/Scripts/python.exe" \
+     "$REPO/scripts/windows/decrypt_all.py"
    ```
    676MB 的主库要用 `scripts/windows/decrypt_stream.py`（流式），否则 MemoryError。
 
 **详细原理、8 条已排除的死路、SQLCipher 参数**：
-`<REPO>\docs\windows-4.x-key-extraction.md`
-`<REPO>\docs\沉淀方案-微信记录接入AI.md`
+`$REPO/docs/windows-4.x-key-extraction.md`
+`$REPO/docs/沉淀方案-微信记录接入AI.md`
+`references/windows.md`（安装与故障排查手册）
 
 ## 安全边界（硬性）
 

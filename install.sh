@@ -234,22 +234,66 @@ ok "MCP server: wechat-local"
 # ---------------------------------------------------------------------------
 step "7/7  安装 Skill 到各运行时"
 
-SKILL_SRC="$HOME/.skills-manager/skills/wechat-local-history"
-mkdir -p "$SKILL_SRC"
-if [ -f "$REPO_DIR/skill/SKILL.md" ]; then
-  cp "$REPO_DIR/skill/SKILL.md" "$SKILL_SRC/SKILL.md"
-  ok "Skill 内容已安装"
+# 用「目录联接」而不是复制单文件：顶层 SKILL.md 引用了 references/*.md 与
+# scripts/common/*，只复制一份 SKILL.md 会让 AI 拿到说明书却找不到手册正文。
+SKILL_SRC="$HOME/.skills-manager/skills/wechat-decrypt"
+
+if [ -e "$SKILL_SRC" ] || [ -L "$SKILL_SRC" ]; then
+  # 已存在：只有指向本仓库才算就绪，否则先备份再重建
+  if "$PY" -c "import os,sys; raise SystemExit(0 if os.path.samefile(sys.argv[1], sys.argv[2]) else 1)" \
+      "$SKILL_SRC" "$REPO_DIR" 2>/dev/null; then
+    ok "Skill 已指向本仓库"
+  else
+    BACKUP="$HOME/.skills-manager/backups/wechat-decrypt.$(date +%Y%m%d%H%M%S).$$"
+    mkdir -p "$(dirname "$BACKUP")"
+    mv "$SKILL_SRC" "$BACKUP" 2>/dev/null || rm -rf "$SKILL_SRC"
+    ln -s "$REPO_DIR" "$SKILL_SRC" 2>/dev/null && \
+      ok "旧 Skill 已备份并重新链接: $BACKUP" || warn "Skill 链接失败"
+  fi
 else
-  warn "未找到 skill/SKILL.md（若仓库内已有则跳过）"
+  mkdir -p "$(dirname "$SKILL_SRC")"
+  ln -s "$REPO_DIR" "$SKILL_SRC" 2>/dev/null && \
+    ok "Skill 已链接到仓库（references/ 与 scripts/ 全部可达）" || \
+    warn "Skill 链接失败，AI 可能读不到 references/ 手册"
+fi
+
+# 顶层 SKILL.md 是跨平台版（用 SKILL_DIR 相对定位），是各运行时的主入口。
+# skill/SKILL.md 是 Windows 微信实战补充，作为副入口一并提供。
+if [ -f "$REPO_DIR/skill/SKILL.md" ]; then
+  mkdir -p "$REPO_DIR/skill/references"
+  for ref in macos windows db-repair export-transcription; do
+    [ -f "$REPO_DIR/references/$ref.md" ] && \
+      cp "$REPO_DIR/references/$ref.md" "$REPO_DIR/skill/references/$ref.md"
+  done
+  ok "实战补充说明已就绪（skill/SKILL.md + references/）"
 fi
 
 for rt in .workbuddy .claude .codex .agents .grok .hermes .codebuddy; do
   d="$HOME/$rt/skills"
   [ -d "$d" ] || continue
-  ln -sfn "$SKILL_SRC" "$d/wechat-local-history" 2>/dev/null && \
+  ln -sfn "$SKILL_SRC" "$d/wechat-decrypt" 2>/dev/null && \
     echo -e "    ${DIM}↳ $rt${NC}"
 done
 ok "Skill 已链接到各运行时"
+
+# 实战补充版（Windows 微信踩坑经验）单独成 skill，
+# 目录名用 wechat-local-history，与仓库内 skill/SKILL.md 的 name 对齐。
+SUPP_SRC="$HOME/.skills-manager/skills/wechat-local-history"
+if [ -f "$REPO_DIR/skill/SKILL.md" ]; then
+  mkdir -p "$SUPP_SRC"
+  cp "$REPO_DIR/skill/SKILL.md" "$SUPP_SRC/SKILL.md"
+  mkdir -p "$SUPP_SRC/references"
+  for ref in macos windows db-repair export-transcription; do
+    [ -f "$REPO_DIR/references/$ref.md" ] && \
+      cp "$REPO_DIR/references/$ref.md" "$SUPP_SRC/references/$ref.md"
+  done
+  for rt in .workbuddy .claude .codex .agents .grok .hermes .codebuddy; do
+    d="$HOME/$rt/skills"
+    [ -d "$d" ] || continue
+    ln -sfn "$SUPP_SRC" "$d/wechat-local-history" 2>/dev/null
+  done
+  ok "实战补充 Skill 已就绪（wechat-local-history）"
+fi
 
 # ---------------------------------------------------------------------------
 echo -e "\n${GRN}"

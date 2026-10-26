@@ -78,8 +78,55 @@ def parse_exports(path):
     return dll_name, out
 
 
+def find_wechat_install_dirs():
+    """Locate WeChat install directories without hardcoding a machine path.
+
+    Order: explicit argument -> ``WECHAT_INSTALL_DIR`` -> the directory of a
+    running ``Weixin.exe`` -> the usual per-user / per-machine install spots.
+    """
+    dirs = []
+
+    env = os.environ.get("WECHAT_INSTALL_DIR")
+    if env:
+        dirs.append(os.path.expandvars(os.path.expanduser(env)))
+
+    # A running WeChat tells us the exact install location.
+    try:
+        import psutil  # type: ignore
+
+        for proc in psutil.process_iter(["name", "exe"]):
+            try:
+                if (proc.info["name"] or "").lower() == "weixin.exe" and proc.info["exe"]:
+                    dirs.append(os.path.dirname(proc.info["exe"]))
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+    home = os.path.expanduser("~")
+    for candidate in (
+        os.path.join(home, "AppData", "Roaming", "Tencent", "Weixin"),
+        os.path.join(home, "AppData", "Local", "Tencent", "Weixin"),
+        os.path.join(home, "AppData", "Roaming", "Tencent", "xwechat"),
+        r"C:\Program Files\Tencent\Weixin",
+        r"C:\Program Files (x86)\Tencent\Weixin",
+    ):
+        dirs.append(candidate)
+
+    seen = set()
+    out = []
+    for path in dirs:
+        if path and path not in seen and os.path.isdir(path):
+            seen.add(path)
+            out.append(path)
+    return out
+
+
 def main():
-    roots = sys.argv[1:] or [r"<微信安装目录>\4.1.15.56"]
+    roots = sys.argv[1:] or find_wechat_install_dirs()
+    if not roots:
+        print("no WeChat install directory found -- pass one as an argument")
+        return
     files = []
     for root in roots:
         for dp, _dn, fn in os.walk(root):

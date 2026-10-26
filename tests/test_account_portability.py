@@ -131,13 +131,21 @@ def test_public_docs_do_not_leak_a_real_group_id():
 
 
 def test_public_docs_do_not_leak_a_real_contact_name():
-    """Names of real chats/groups must not ship either."""
+    """Names of real chats/groups must not ship either.
+
+    The needles are assembled from fragments: writing them out in full would
+    turn this guard file into the very leak it is meant to prevent.
+    """
+    needles = (
+        "端" + "哥",
+        "推特运营" + "群",
+    )
     offenders = []
     for path in list(ROOT.glob("docs/*.md")) + [ROOT / "README.md", ROOT / "README_ZH.md", ROOT / "skill" / "SKILL.md"]:
         if not path.is_file():
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
-        for needle in ("某联系人", "<群名占位>"):
+        for needle in needles:
             if needle in text:
                 offenders.append(f"{path.relative_to(ROOT)}: {needle}")
     assert not offenders, "contact names leaked into public docs:\n" + "\n".join(offenders)

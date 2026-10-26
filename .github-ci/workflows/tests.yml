@@ -27,7 +27,7 @@ jobs:
       - if: runner.os == 'Windows'
         run: python -m pip install -r requirements-windows.txt
       - run: python -m pytest -q
-      - run: python -c "import asyncio, server; assert len(asyncio.run(server.mcp.list_tools())) == 6"
+      - run: python -c "import asyncio, server; assert len(asyncio.run(server.mcp.list_tools())) == 7"
       - run: python -m compileall -q appmsg.py config.py contacts.py crypto.py db.py message.py server.py scripts/common scripts/windows
       - if: runner.os == 'macOS'
         run: bash -n setup.sh scripts/macos/extract_key.sh

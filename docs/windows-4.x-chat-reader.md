@@ -16,7 +16,7 @@
 
 | 项 | 值 |
 |---|---|
-| 微信版本 | 4.1.15.56，装在 `<微信安装目录>\4.1.15.56` |
+| 微信版本 | 4.1.15.56，装在 `<微信安装目录>` |
 | 进程 | `Weixin.exe`（多进程）+ `WeChatAppEx.exe` |
 | 数据根目录 | `<WECHAT_DATA_ROOT>`（微信设置 → 文件管理里改过位置） |
 | 账号目录 | `xwechat_files/<wxid>_<device>/db_storage`，一个账号一个目录 |
@@ -59,7 +59,7 @@
 ### 0. 前置
 
 ```bash
-cd /d/Projects/wxdec-skill
+cd <仓库目录>
 export WECHAT_DATA_ROOT="<数据根目录>"
 ```
 

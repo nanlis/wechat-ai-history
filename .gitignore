@@ -22,4 +22,7 @@ sha512_rvas.json
 sha512_rvas_all.json
 交付/
 群聊索引.json
-*群聊导出.txt
+*群聊*.txt
+*导出*.txt
+candidates.txt
+ctx_candidates.txt

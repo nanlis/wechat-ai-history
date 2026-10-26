@@ -4,7 +4,7 @@
 微信 4.x 数据库用 SQLCipher 4 加密（PBKDF2-HMAC-SHA512 **256,000 次**），密钥每次登录随机生成、只存在于运行中进程的内存里，静态文件无法解开。必须从**运行中的**微信进程里拿到密钥。
 
 ## 环境（已实测）
-- 微信安装：`<微信安装目录>\Weixin.exe`，版本 `4.1.15.56`，核心 DLL `<微信安装目录>\4.1.15.56\Weixin.dll`（204MB）
+- 微信安装：`<微信安装目录>\Weixin.exe`，版本 `4.1.15.56`，核心 DLL `<微信安装目录>\<版本号>\Weixin.dll`（约 200MB）
 - 数据目录：`<WECHAT_DATA_ROOT>/<wxid>_<device>/db_storage`（微信设置 → 文件管理里改过位置）
 - 账号目录：每个微信账号一个目录；一台机器可能同时存在多个（换过号就会留下旧的）
 - **账号怎么认**：raw key 按账号派生，一把 key 只开得了它所属的账号。
@@ -60,10 +60,10 @@ frida attach 也成功——本机 Git Bash 已带管理员令牌。技能文档
 
 ## 拿到密钥之后
 ```powershell
-$env:WECHAT_DATA_ROOT = 'D:\WeChatData\xwechat_files'
-& "<REPO>\.venv\Scripts\python.exe" scripts\windows\decrypt_all.py
+$env:WECHAT_DATA_ROOT = '<你的数据根目录>'
+& "<仓库目录>\.venv\Scripts\python.exe" scripts\windows\decrypt_all.py
 ```
-产出明文库在 `<REPO>\decrypted\<wxid>\db_storage\`，之后用
+产出明文库在 `<仓库目录>\decrypted\<wxid>\db_storage\`，之后用
 `scripts\common\query.py`（查）/ `export_chat.py`（导出）读。
 
 ## 安全红线

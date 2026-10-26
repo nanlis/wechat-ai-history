@@ -124,16 +124,16 @@ bash scripts/windows/refresh_key.sh   # 提密钥 + 解密全部库
 脚本会自动探测以下常见位置，探测不到会交互式询问：
 
 ```
-D:\WeChatData\xwechat_files           <数据根目录>
-C:\Users\<你>\Documents\xwechat_files
-<数据根目录>           D:\xwechat_files
+C:\Users\<你>\Documents\xwechat_files     # 微信默认
+D:\WeChatData\xwechat_files               # 数据目录被挪到别的盘
+E:\Chat\xwechat_files
 ```
 
 也可以显式指定（Windows 或 Git Bash 两种写法都接受）：
 
 ```bash
 bash install.sh "D:\WeChatData\xwechat_files"
-bash install.sh /d/Document/xwechat_files
+bash install.sh /d/WeChatData/xwechat_files
 ```
 
 ### 然后三步
@@ -163,7 +163,7 @@ AI 客户端          WorkBuddy · Claude Code · Codex
     ↓
 Skill              skill/SKILL.md —— 教 AI 何时调、怎么调、有哪些坑
     ↓
-MCP Server         server.py —— 6 个工具，stdio，本地
+MCP Server         server.py —— 7 个工具，stdio，本地
     ↓
 内核               scripts/windows/ —— 提密 → 解密 → 查询
     ↓
@@ -208,7 +208,7 @@ AES-256-CBC · page 4096 · reserve 80
 | `scripts/windows/find_k1.py` | 内存中定位单库的派生密钥 |
 | `scripts/windows/find_ctx.py` | 按 `kdf_iter=256000` 常量定位 SQLCipher ctx |
 | `scripts/windows/dump_exports.py` | 扫描 DLL 导出符号 |
-| `server.py` | MCP server（6 工具） |
+| `server.py` | MCP server（7 工具） |
 | `install.sh` | 全新电脑一键安装 |
 
 ## 已验证的规模
@@ -266,7 +266,7 @@ Copyright (c) 2026 cocofeng）演进而来。原仓库提供了跨平台解密�
 - 全新电脑一键安装流程
 
 上游原始说明见 `README.upstream.md` / `README_ZH.upstream.md`，
-技术细节见 `docs/windows-4.x-key-extraction.md` 与 `docs/我们做的是什么.md`。
+技术细节见 `docs/windows-4.x-key-extraction.md` 与 `docs/architecture.md`。
 
 ## License
 

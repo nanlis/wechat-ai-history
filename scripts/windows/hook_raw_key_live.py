@@ -179,7 +179,9 @@ def save_rvas(rvas):
 
 
 def find_message_db():
-    root = os.environ.get("WECHAT_DATA_ROOT") or r"D:\WeChatData\xwechat_files"
+    root = os.environ.get("WECHAT_DATA_ROOT") or os.path.expanduser(
+        "~/Documents/xwechat_files"
+    )
     import glob
     dbs = glob.glob(os.path.join(root, "*", "db_storage", "message", "message_0.db"))
     if not dbs:

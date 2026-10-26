@@ -194,7 +194,7 @@ V="$REPO/.venv/Scripts/python.exe"
 
 **详细原理、8 条已排除的死路、SQLCipher 参数**：
 `$REPO/docs/windows-4.x-key-extraction.md`
-`$REPO/docs/沉淀方案-微信记录接入AI.md`
+`$REPO/docs/design-decisions.md`
 `references/windows.md`（安装与故障排查手册）
 
 ## 安全边界（硬性）

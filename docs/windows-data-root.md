@@ -4,7 +4,7 @@ If WeChat's `xwechat_files` directory lives outside Documents, set its parent
 account root before extracting, decrypting, running the doctor, or querying:
 
 ```powershell
-$env:WECHAT_DATA_ROOT = 'D:\WeChatData\xwechat_files'
+$env:WECHAT_DATA_ROOT = '<你的数据根目录>'
 & .venv\Scripts\python.exe scripts\windows\extract_raw_key.py
 & .venv\Scripts\python.exe scripts\windows\decrypt_all.py
 & .venv\Scripts\python.exe scripts\common\doctor.py --json

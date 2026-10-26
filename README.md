@@ -242,9 +242,25 @@ AES-256-CBC · page 4096 · reserve 80
 
 请负责任地使用本工具，遵守相关法律法规。
 
+## 开发者
+
+```bash
+.venv/Scripts/pip install -r requirements-dev.txt   # 运行时依赖 + pytest
+.venv/Scripts/python.exe -m pytest -q
+```
+
+测试全部使用合成数据库，**不需要**微信运行、**不需要**真实密钥，
+在一台刚 clone 下来的干净机器上也能全绿。
+
+仓库自带脱敏审计工具，会扫描工作区 + 全部 git 历史 + 提交信息：
+
+```bash
+.venv/Scripts/python.exe scripts/common/scrub_audit.py
+```
+
 ## CI 说明
 
-上游仓库自带 GitHub Actions 配置（跑 pytest + 校验 MCP 工具数为 6）。
+上游仓库自带 GitHub Actions 配置（跑 pytest + 校验 MCP 工具数为 7）。
 由于推送用的 OAuth token 缺少 `workflow` scope，配置文件暂存于
 `.github-ci/workflows/tests.yml`。补齐 scope 后一条命令恢复：
 

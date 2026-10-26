@@ -17,16 +17,20 @@ bash install.sh          # 探测环境、建 venv、装依赖
 
 ```bash
 python -m venv .venv
-.venv/Scripts/pip install -r requirements.txt
+.venv/Scripts/pip install -r requirements-windows.txt
 ```
 
 ## 跑测试
 
+`pytest` 不在运行时依赖里，测试前额外装一个：
+
 ```bash
+.venv/Scripts/pip install -r requirements-dev.txt
 .venv/Scripts/python.exe -m pytest -q
 ```
 
-测试**不需要**微信运行，也**不需要**真实密钥——全部用合成数据库。
+测试**不需要**微信运行，也**不需要**真实密钥——全部用合成数据库，
+在一台刚 clone 下来的干净机器上也能全绿。
 
 改完先跑：
 

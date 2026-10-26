@@ -23,8 +23,41 @@ def test_install_script_links_the_whole_repo_as_skill():
     """
     install = _read("install.sh")
 
-    assert 'ln -s "$REPO_DIR" "$SKILL_SRC"' in install
+    assert 'link_dir "$SKILL_SRC" "$REPO_DIR"' in install
     assert 'cp "$REPO_DIR/skill/SKILL.md" "$SKILL_SRC/SKILL.md"' not in install
+
+
+def test_install_script_uses_junction_not_ln_s():
+    """`ln -s` silently fails on Windows without symlink privileges.
+
+    Git Bash runs with MSYS=winsymlinks:nativestrict, so `ln -s` needs
+    SeCreateSymbolicLinkPrivilege.  Without it the command errors out, and
+    because install.sh used to swallow that error, an empty directory was
+    left behind and the skill silently resolved to nothing.
+    """
+    install = _read("install.sh")
+
+    assert "New-Item -ItemType Junction" in install
+    assert 'ln -sfn "$SKILL_SRC"' not in install
+    assert 'ln -s "$REPO_DIR"' not in install
+
+
+def test_install_script_avoids_cmd_exe_mklink():
+    """`cmd.exe /c "mklink /J ..."` loses the /J flag to quote mangling.
+
+    Git Bash hands the command to cmd.exe after its own quote processing,
+    so cmd sees `/J` as a path argument instead of the junction flag.
+    Comments and the manual fallback hint may still mention it; what must
+    not exist is an actual invocation.
+    """
+    install = _read("install.sh")
+
+    for line in install.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            continue
+        assert "cmd.exe /c" not in stripped, f"不应直接调 cmd.exe: {stripped}"
+        assert "mklink" not in stripped, f"不应直接调 mklink: {stripped}"
 
 
 def test_install_script_ships_the_reference_pages():

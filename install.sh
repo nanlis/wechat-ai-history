@@ -181,7 +181,11 @@ LINK_DIR="C:/Users/$USERNAME/Documents/xwechat_files"
 TARGET_WIN="$DATA_ROOT_WIN"
 LINK_WIN="C:\\Users\\$USERNAME\\Documents\\xwechat_files"
 if [ ! -e "$LINK_DIR" ]; then
-  cmd.exe /c "mklink /J \"$LINK_WIN\" \"$TARGET_WIN\"" >/dev/null 2>&1 && \
+  # 用 PowerShell 原生 Junction：
+  # Git Bash 里调 cmd.exe /c mklink 会被引号转义吃掉（/J 被当成路径）。
+  powershell.exe -NoProfile -Command \
+    "New-Item -ItemType Junction -Path '$LINK_WIN' -Target '$TARGET_WIN' -ErrorAction Stop | Out-Null" \
+    >/dev/null 2>&1 && \
     ok "已创建联接 Documents\\xwechat_files → $TARGET_WIN" || \
     warn "联接创建失败（不影响主流程，可忽略）"
 else
@@ -234,55 +238,100 @@ ok "MCP server: wechat-local"
 # ---------------------------------------------------------------------------
 step "7/7  安装 Skill 到各运行时"
 
+# Windows 上必须用目录联接（mklink /J），不能用 ln -s：
+# Git Bash 的 MSYS=winsymlinks:nativestrict 下 ln -s 需要管理员权限，
+# 无权限时会静默失败并留下空目录（ln 的错误被 2>/dev/null 吞掉）。
+# mklink /J 不需要符号链接权限，且与本脚本第 5 步、.workbuddy/skills 下
+# 其他 skill 的做法一致。
+link_dir() {
+  # link_dir <目标路径> <源目录>
+  local target="$1" source="$2"
+  local target_win source_win
+  target_win="$(to_win_path "$target")"
+  source_win="$(to_win_path "$source")"
+  mkdir -p "$(dirname "$target")"
+  # 已是联接 -> 视为就绪
+  if [ -n "$(fsutil_reparse "$target_win")" ]; then
+    return 0
+  fi
+  # 是真实目录（不是联接）-> 可能是旧版留下的空壳，移走后重建
+  if [ -e "$target" ]; then
+    if [ -z "$(ls -A "$target" 2>/dev/null)" ]; then
+      rmdir "$target" 2>/dev/null || rm -rf "$target" 2>/dev/null
+    else
+      return 1
+    fi
+  fi
+  # 用 PowerShell 原生 Junction：
+  # Git Bash 里调 cmd.exe /c mklink 会被引号转义吃掉（/J 被当成路径），
+  # 而 ln -s 在 Windows 上需要符号链接权限，无权限时静默失败。
+  powershell.exe -NoProfile -Command \
+    "New-Item -ItemType Junction -Path '$target_win' -Target '$source_win' -ErrorAction Stop | Out-Null" \
+    >/dev/null 2>&1
+}
+
+# Windows 路径（反斜杠 + 大写盘符），供 PowerShell 使用
+to_win_path() {
+  "$PY" -c "
+import sys
+p = sys.argv[1].replace('/', chr(92))
+if len(p) > 1 and p[1] == ':':
+    print(p[0].upper() + p[1:])
+else:
+    print(p)
+" "$1"
+}
+
+# 判断路径是否为 reparse point（联接/符号链接），输出非空即表示是
+fsutil_reparse() {
+  local target_win="$1"
+  powershell.exe -NoProfile -Command \
+    "\$i = Get-Item -LiteralPath '$target_win' -Force -ErrorAction SilentlyContinue; if (\$i -and (\$i.Attributes -band [IO.FileAttributes]::ReparsePoint)) { 'yes' }" \
+    2>/dev/null | tr -d '\r\n '
+}
+
 # 用「目录联接」而不是复制单文件：顶层 SKILL.md 引用了 references/*.md 与
 # scripts/common/*，只复制一份 SKILL.md 会让 AI 拿到说明书却找不到手册正文。
 SKILL_SRC="$HOME/.skills-manager/skills/wechat-decrypt"
 
-if [ -e "$SKILL_SRC" ] || [ -L "$SKILL_SRC" ]; then
-  # 已存在：只有指向本仓库才算就绪，否则先备份再重建
-  if "$PY" -c "import os,sys; raise SystemExit(0 if os.path.samefile(sys.argv[1], sys.argv[2]) else 1)" \
-      "$SKILL_SRC" "$REPO_DIR" 2>/dev/null; then
-    ok "Skill 已指向本仓库"
-  else
-    BACKUP="$HOME/.skills-manager/backups/wechat-decrypt.$(date +%Y%m%d%H%M%S).$$"
-    mkdir -p "$(dirname "$BACKUP")"
-    mv "$SKILL_SRC" "$BACKUP" 2>/dev/null || rm -rf "$SKILL_SRC"
-    ln -s "$REPO_DIR" "$SKILL_SRC" 2>/dev/null && \
-      ok "旧 Skill 已备份并重新链接: $BACKUP" || warn "Skill 链接失败"
-  fi
+# 旧版本可能留下真实目录（ln -s 在 Windows 上无权限时会建空目录），
+# 先备份再重建，避免直接卡住。
+if [ -e "$SKILL_SRC" ] && [ -z "$(fsutil_reparse "$(to_win_path "$SKILL_SRC")")" ]; then
+  BACKUP="$HOME/.skills-manager/backups/wechat-decrypt.$(date +%Y%m%d%H%M%S).$$"
+  mkdir -p "$(dirname "$BACKUP")"
+  mv "$SKILL_SRC" "$BACKUP" 2>/dev/null && \
+    echo -e "    ${DIM}旧 Skill 已备份: $BACKUP${NC}"
+fi
+
+if link_dir "$SKILL_SRC" "$REPO_DIR"; then
+  ok "Skill 已链接到仓库（references/ 与 scripts/ 全部可达）"
 else
-  mkdir -p "$(dirname "$SKILL_SRC")"
-  ln -s "$REPO_DIR" "$SKILL_SRC" 2>/dev/null && \
-    ok "Skill 已链接到仓库（references/ 与 scripts/ 全部可达）" || \
-    warn "Skill 链接失败，AI 可能读不到 references/ 手册"
+  warn "Skill 链接失败，AI 可能读不到 references/ 手册"
+  warn "可手动执行：powershell -Command \"New-Item -ItemType Junction -Path '$(to_win_path "$SKILL_SRC")' -Target '$(to_win_path "$REPO_DIR")'\""
 fi
 
 # 顶层 SKILL.md 是跨平台版（用 SKILL_DIR 相对定位），是各运行时的主入口。
 # skill/SKILL.md 是 Windows 微信实战补充，作为副入口一并提供。
 if [ -f "$REPO_DIR/skill/SKILL.md" ]; then
-  mkdir -p "$REPO_DIR/skill/references"
-  for ref in macos windows db-repair export-transcription; do
-    [ -f "$REPO_DIR/references/$ref.md" ] && \
-      cp "$REPO_DIR/references/$ref.md" "$REPO_DIR/skill/references/$ref.md"
-  done
   ok "实战补充说明已就绪（skill/SKILL.md + references/）"
 fi
 
 for rt in .workbuddy .claude .codex .agents .grok .hermes .codebuddy; do
   d="$HOME/$rt/skills"
   [ -d "$d" ] || continue
-  ln -sfn "$SKILL_SRC" "$d/wechat-decrypt" 2>/dev/null && \
+  link_dir "$d/wechat-decrypt" "$SKILL_SRC" && \
     echo -e "    ${DIM}↳ $rt${NC}"
 done
 ok "Skill 已链接到各运行时"
 
 # 实战补充版（Windows 微信踩坑经验）单独成 skill，
 # 目录名用 wechat-local-history，与仓库内 skill/SKILL.md 的 name 对齐。
+# 这一版是「复制品」而非联接（内容独立、便于各运行时共享），
+# 因此目标路径存在时直接覆盖更新，不做联接。
 SUPP_SRC="$HOME/.skills-manager/skills/wechat-local-history"
 if [ -f "$REPO_DIR/skill/SKILL.md" ]; then
-  mkdir -p "$SUPP_SRC"
-  cp "$REPO_DIR/skill/SKILL.md" "$SUPP_SRC/SKILL.md"
   mkdir -p "$SUPP_SRC/references"
+  cp "$REPO_DIR/skill/SKILL.md" "$SUPP_SRC/SKILL.md"
   for ref in macos windows db-repair export-transcription; do
     [ -f "$REPO_DIR/references/$ref.md" ] && \
       cp "$REPO_DIR/references/$ref.md" "$SUPP_SRC/references/$ref.md"
@@ -290,7 +339,12 @@ if [ -f "$REPO_DIR/skill/SKILL.md" ]; then
   for rt in .workbuddy .claude .codex .agents .grok .hermes .codebuddy; do
     d="$HOME/$rt/skills"
     [ -d "$d" ] || continue
-    ln -sfn "$SUPP_SRC" "$d/wechat-local-history" 2>/dev/null
+    target="$d/wechat-local-history"
+    if [ -e "$target" ] && [ -z "$(fsutil_reparse "$(to_win_path "$target")")" ]; then
+      # 旧版留下的真实目录 -> 换成联接，保持单一真源
+      rm -rf "$target" 2>/dev/null
+    fi
+    link_dir "$target" "$SUPP_SRC" 2>/dev/null
   done
   ok "实战补充 Skill 已就绪（wechat-local-history）"
 fi

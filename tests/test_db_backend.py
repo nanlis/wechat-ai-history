@@ -69,6 +69,26 @@ def test_get_my_wxid_strips_device_suffix(win_backend):
     assert db.get_my_wxid() == "wxid_test001"
 
 
+def test_local_identity_lookup_degrades_gracefully_without_a_decrypted_store(tmp_path, monkeypatch):
+    """A fresh clone has no decrypted store -- formatting must still work.
+
+    ``query._fmt_msg`` asks for the local wxid to label who sent a message.
+    If that lookup raised, every message formatter would blow up on a machine
+    that has not decrypted anything yet.
+    """
+    import config
+    import db
+
+    monkeypatch.setattr(config, "DB_BACKEND", "sqlite3", raising=False)
+    monkeypatch.setattr(config, "DECRYPTED_DIR", str(tmp_path / "empty"), raising=False)
+    monkeypatch.setenv("WECHAT_ACCOUNT", "__no_such_account__")
+    db.reset_caches()
+    try:
+        assert db.get_my_wxid() == ""
+    finally:
+        db.reset_caches()
+
+
 def test_decrypted_data_discovery_does_not_require_message_zero(win_backend):
     import db
 

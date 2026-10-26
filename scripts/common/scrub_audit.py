@@ -44,6 +44,7 @@ _PATTERNS: list[tuple[str, str]] = [
     ("project path", _fragments(r"[A-Za-z]:[\\/]+", r"Projects[\\/]+wxdec")),
     ("windows user path", _fragments(r"C:[\\/]+Users[\\/]+", r"[A-Za-z]+[\\/]+(?:\.workbuddy|\.codex)")),
     ("personal handle", _fragments(r"@", r"[Ss]oran", r"lan")),
+    ("contact name", _fragments(r"端", r"哥")),
     ("group name fragment", _fragments(r"推特运营", r"群")),
     ("phone number", r"\b1[3-9]\d{9}\b"),
 ]

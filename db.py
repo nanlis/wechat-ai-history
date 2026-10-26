@@ -169,8 +169,16 @@ def query_raw(db_path: str, sql: str) -> list[str]:
 
 
 def get_my_wxid() -> str:
-    """Extract the account wxid from the data directory path."""
-    data_dir = find_data_dir()
+    """Account wxid of the local login, or "" when it cannot be determined.
+
+    Best effort by design: message formatting has to keep working when no
+    decrypted store exists (fresh clone, unit tests, another machine).  The
+    caller decides how to label a message whose direction is unknown.
+    """
+    try:
+        data_dir = find_data_dir()
+    except (FileNotFoundError, OSError):
+        return ""
     # path: .../xwechat_files/<wxid>_<device>/db_storage
     return accounts.account_wxid(data_dir)
 

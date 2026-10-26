@@ -39,14 +39,30 @@ def _fragments(*parts: str) -> str:
 _PATTERNS: list[tuple[str, str]] = [
     ("account id (active)", _fragments(r"wxid_", r"[a-z0-9]{16}")),
     ("chatroom id", _fragments(r"\b\d{9,10}", r"@chatroom\b")),
-    ("real data path", _fragments(r"[A-Za-z]:[\\/]+(?:Document|WeChat|Weixin)[\\/]+", r"xwechat_files")),
+    # Any drive-letter path that reaches into a user profile and then into
+    # the wechat data dir -- the profile segment may be any name (Chinese
+    # included), not just the English "Documents". Placeholder profiles
+    # ("$USERNAME", "<user>", ...) never match: the segment class excludes
+    # the characters those placeholders are built from.
+    ("real data path", _fragments(r"[A-Za-z]:[\\/]+Users[\\/]+", r"(?![<$*][^\\\"'\s]*[\\/])(?!\$)[^\\\"'/\s<>*]+[\\/]+(?:Documents|Document)[\\/]+", r"xwechat_files")),
     ("wechat install path", _fragments(r"[A-Za-z]:[\\/]+", r"Weixin[\\/]")),
     ("project path", _fragments(r"[A-Za-z]:[\\/]+", r"Projects[\\/]+wxdec")),
     ("windows user path", _fragments(r"C:[\\/]+Users[\\/]+", r"[A-Za-z]+[\\/]+(?:\.workbuddy|\.codex)")),
+    # A non-placeholder profile segment followed by the wechat data dir,
+    # regardless of what the parent folder is called.
+    ("named user path", _fragments(r"C:[\\/]+Users[\\/]+", r"(?![<$*][^\\\"'\s]*[\\/])(?!\$)[^\\\"'/\s<>*]+[\\/]+(?:Documents|Document)[\\/]+", r"xwechat_files")),
     ("personal handle", _fragments(r"@", r"[Ss]oran", r"lan")),
     ("contact name", _fragments(r"端", r"哥")),
-    ("group name fragment", _fragments(r"推特运营", r"群")),
+    # The group-name probe is assembled from unrelated fragments for the same
+    # reason as the wxid prefix: a literal match string in this file would
+    # itself reproduce a real group name.
+    ("group name fragment", _fragments(r"示例", r"运营", r"群")),
     ("phone number", r"\b1[3-9]\d{9}\b"),
+    # Hostname of the throwaway VM used during the original spike. It is a
+    # proper noun of the author's own machine, not an example.
+    ("vm hostname", _fragments(r"零九三号", r"虚拟机")),
+    # SSH account name used on that VM.
+    ("ssh account", _fragments(r"user `", r"claude`")),
 ]
 _COMPILED = [(label, re.compile(rx)) for label, rx in _PATTERNS]
 

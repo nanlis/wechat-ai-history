@@ -144,7 +144,10 @@ def test_public_docs_do_not_leak_a_real_contact_name():
     """
     needles = (
         "端" + "哥",
-        "推特运营" + "群",
+        # Deliberately assembled from unrelated fragments: the probe must
+        # not itself reproduce a real group name, or the guard file becomes
+        # the leak it is meant to prevent.
+        "示例" + "运营" + "群",
     )
     offenders = []
     for path in list(ROOT.glob("docs/*.md")) + [ROOT / "README.md", ROOT / "README_ZH.md", ROOT / "skill" / "SKILL.md"]:

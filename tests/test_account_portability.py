@@ -117,6 +117,10 @@ def test_public_docs_do_not_leak_a_real_account_id():
 # WeChat group ids are a long digit run followed by @chatroom.
 GROUP_ID = re.compile(r"\b\d{9,}@chatroom\b")
 
+# An all-zero id is the placeholder this repo uses to stand in for a real
+# group id.  It is safe content; a run of any other digits is not.
+GROUP_ID_PLACEHOLDER = "0" * 11 + "@chatroom"
+
 
 def test_public_docs_do_not_leak_a_real_group_id():
     """Real group ids identify private conversations -- they must not ship."""
@@ -126,6 +130,8 @@ def test_public_docs_do_not_leak_a_real_group_id():
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
         for match in GROUP_ID.finditer(text):
+            if match.group(0) == GROUP_ID_PLACEHOLDER:
+                continue
             offenders.append(f"{path.relative_to(ROOT)}: {match.group(0)}")
     assert not offenders, "group ids leaked into public docs:\n" + "\n".join(offenders)
 

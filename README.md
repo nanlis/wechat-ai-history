@@ -46,7 +46,35 @@ bash install.sh
 安装脚本会自动完成：探测 Python → 探测微信 → 探测数据目录 → 建 venv 装依赖 →
 创建目录联接 → 注册 MCP server → 安装 Skill 到各运行时。
 
-然后三步：
+### 前置条件
+
+| 项 | 要求 |
+|---|---|
+| 操作系统 | Windows 10+ x64 |
+| 微信 | **4.0 及以上**（4.1.x 已验证） |
+| Python | 3.11+（frida 17 要求；3.13 已验证） |
+| 终端 | Git Bash **以管理员身份运行**（读微信进程内存需要） |
+| 磁盘 | ≥3 GB（明文库约为主库的 1.3 倍） |
+| 网络 | 仅安装依赖与克隆仓库时需要，**运行期全程离线** |
+
+### 关于数据目录
+
+脚本会自动探测以下常见位置，探测不到会交互式询问：
+
+```
+D:\WeChatData\xwechat_files           <数据根目录>
+C:\Users\<你>\Documents\xwechat_files
+<数据根目录>           D:\xwechat_files
+```
+
+也可以显式指定（Windows 或 Git Bash 两种写法都接受）：
+
+```bash
+bash install.sh "D:\WeChatData\xwechat_files"
+bash install.sh /d/Document/xwechat_files
+```
+
+### 然后三步
 
 ```bash
 # 1. 从桌面双击启动微信并登录
@@ -148,6 +176,18 @@ AES-256-CBC · page 4096 · reserve 80
 - **只操作用户本机、用户有权访问的数据**
 
 请负责任地使用本工具，遵守相关法律法规。
+
+## CI 说明
+
+上游仓库自带 GitHub Actions 配置（跑 pytest + 校验 MCP 工具数为 6）。
+由于推送用的 OAuth token 缺少 `workflow` scope，配置文件暂存于
+`.github-ci/workflows/tests.yml`。补齐 scope 后一条命令恢复：
+
+```bash
+gh auth refresh -h github.com -s workflow
+git mv .github-ci/workflows .github/workflows
+git push
+```
 
 ## 致谢与出处
 

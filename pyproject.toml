@@ -1,0 +1,16 @@
+[project]
+name = "wechat-mcp-server"
+version = "0.1.0"
+description = "Read-only MCP server for local WeChat 4.x history on macOS and Windows"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp[cli]>=1.0.0,<2",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+pythonpath = [".", "scripts/common"]
+testpaths = ["tests"]

@@ -1,0 +1,4 @@
+interface:
+  display_name: "WeChat Decrypt"
+  short_description: "Search and export your local WeChat history"
+  default_prompt: "Use $wechat-decrypt to summarize my recent local WeChat messages."

@@ -5,10 +5,12 @@
 
 ## 环境（已实测）
 - 微信安装：`<微信安装目录>\Weixin.exe`，版本 `4.1.15.56`，核心 DLL `<微信安装目录>\4.1.15.56\Weixin.dll`（204MB）
-- 数据目录：`D:\WeChatData\xwechat_files\<wxid>\db_storage`（微信设置 → 文件管理里改过位置）
-- 账号目录两个：`wxid_example01_dev_a`（活跃）、`wxid_example02_dev_b`（停用）
-- 活跃账号判断：看 `db_storage/message/message_0.db` 的 mtime 最新
-- 工具：`<REPO>`（tzwkb/wechat-decrypt，克隆需走代理），venv 在 `<REPO>\.venv`
+- 数据目录：`<WECHAT_DATA_ROOT>/<wxid>_<device>/db_storage`（微信设置 → 文件管理里改过位置）
+- 账号目录：每个微信账号一个目录；一台机器可能同时存在多个（换过号就会留下旧的）
+- **账号怎么认**：raw key 按账号派生，一把 key 只开得了它所属的账号。
+  别用 mtime 猜活跃账号——用 `decrypt_all.py`，它会拿 key 逐个探测所有账号目录，只解开能打开的那个。
+  需要锁定某个账号时：`--account <目录名或wxid>`，或环境变量 `WECHAT_ACCOUNT`。
+- 工具：仓库根目录即工作目录，venv 在 `<REPO>/.venv`
 
 ## 关键参数
 ```python

@@ -1,10 +1,37 @@
 import hashlib
 import os
+import shutil
 import sqlite3
 import pytest
 
 SAMPLE_WXID = "wxid_friend001"
 SAMPLE_TABLE = "Msg_" + hashlib.md5(SAMPLE_WXID.encode()).hexdigest()
+
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REAL_DECRYPTED_DIR = os.path.join(REPO_ROOT, "decrypted")
+
+
+@pytest.fixture(autouse=True)
+def _protect_real_decrypted_store():
+    """Guard rail: no test may leave artefacts in the real decrypted store.
+
+    The decrypted mirror holds the user's own chat history. A test that
+    writes there would both corrupt real data and leak synthetic accounts
+    into the user's tree, so any stray directory is removed afterwards.
+    """
+    before = set(os.listdir(REAL_DECRYPTED_DIR)) if os.path.isdir(REAL_DECRYPTED_DIR) else set()
+    yield
+    if not os.path.isdir(REAL_DECRYPTED_DIR):
+        return
+    for name in set(os.listdir(REAL_DECRYPTED_DIR)) - before:
+        path = os.path.join(REAL_DECRYPTED_DIR, name)
+        if os.path.isdir(path):
+            shutil.rmtree(path, ignore_errors=True)
+        else:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
 
 
 @pytest.fixture

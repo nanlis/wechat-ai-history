@@ -8,7 +8,9 @@ import sys
 
 from mcp.server.fastmcp import FastMCP
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "scripts", "common"))
+import accounts  # noqa: E402
 import query  # noqa: E402
 
 mcp = FastMCP(
@@ -20,6 +22,22 @@ mcp = FastMCP(
         "[我] 表示用户自己发的，[对方] 表示联系人发的。"
     ),
 )
+
+
+@mcp.tool()
+def wechat_list_accounts() -> str:
+    """列出本机已解密的微信账号（目录名 + wxid）。多账号时用 WECHAT_ACCOUNT 指定要读哪个。"""
+    import config
+
+    roots = accounts.decrypted_account_roots(config.DECRYPTED_DIR)
+    if not roots:
+        return "本机没有已解密的微信账号。请先运行 scripts/windows/decrypt_all.py。"
+    lines = ["可用账号："]
+    for name, _storage in roots:
+        lines.append(f"- {name}  (wxid: {accounts.account_wxid(_storage)})")
+    lines.append("")
+    lines.append("设置环境变量 WECHAT_ACCOUNT=<目录名或wxid> 可锁定账号。")
+    return "\n".join(lines)
 
 
 @mcp.tool()

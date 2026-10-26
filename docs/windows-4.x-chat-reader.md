@@ -11,16 +11,22 @@
 
 ## 环境事实
 
+> 下表是**某台机器的实测记录**，账号名与路径已泛化。换机器时只有「数据根目录」和「账号目录名」会变，
+> 其余结论（加密参数、目录结构、KDF 参数）不变。
+
 | 项 | 值 |
 |---|---|
 | 微信版本 | 4.1.15.56，装在 `<微信安装目录>\4.1.15.56` |
 | 进程 | `Weixin.exe`（多进程）+ `WeChatAppEx.exe` |
-| 数据根目录 | `D:\WeChatData\xwechat_files` |
-| 活跃账号 | `wxid_example01_dev_a` |
-| 旧账号 | `wxid_example02_dev_b`（7 月停用） |
+| 数据根目录 | `<WECHAT_DATA_ROOT>`（微信设置 → 文件管理里改过位置） |
+| 账号目录 | `xwechat_files/<wxid>_<device>/db_storage`，一个账号一个目录 |
 | 加密 | SQLCipher v4，AES-256-CBC + HMAC-SHA512 |
 | KDF | PBKDF2-HMAC-SHA512，**256,000 次迭代**，32 字节密钥 |
 | 页 | 4096 字节，reserve 80 字节（IV 16 + MAC 64） |
+
+**账号不唯一怎么办**：raw key 是**按账号**派生的，一把 key 只开得了它所属的那个账号。
+`decrypt_all.py` 会拿 key 去逐个探测数据根下的所有账号目录，只解开能打开的那一个；
+想指定账号用 `--account <目录名或wxid>`，或设环境变量 `WECHAT_ACCOUNT`。
 
 ---
 
@@ -31,16 +37,16 @@
 ├── .venv\                       frida 17.24.3 + pycryptodome + zstandard
 ├── key_windows.txt              ← raw key（敏感，勿外传）
 ├── decrypted\                   ← 明文 SQLite 库（敏感，勿外传）
-│   └── wxid_example01_dev_a\db_storage\
-│       ├── message\message_0.db   646M  373 个分片，891,782 条
-│       ├── message\message_1.db   226M  1 个分片，265,224 条
-│       ├── contact\contact.db      17M  190 群 / 26,659 成员
-│       ├── session\session.db     216K  527 会话
-│       └── ... 共 21 个库，合计 1.3G
+│   └── <account>\db_storage\
+│       ├── message\message_0.db   主库，几十到几百 MB
+│       ├── message\message_1.db   第二个分片
+│       ├── contact\contact.db      群 / 成员名单
+│       ├── session\session.db     会话列表
+│       └── ... 每个账号几十个库
 └── scripts\windows\
     ├── hook_raw_key_broad.py   ← 提取 raw key（主力）
-    ├── decrypt_stream.py       ← 流式解密（67 万页级必用）
-    ├── decrypt_all.py          ← 一次性解密（小库可用）
+    ├── decrypt_stream.py       ← 流式解密（超大库必用）
+    ├── decrypt_all.py          ← 一次性解密（自动匹配账号）
     ├── find_ctx.py             ← 备用提 key 路线（按 kdf_iter 常量定位）
     ├── dump_exports.py         ← 扫 DLL 导出符号（排查用）
     └── wxread.py               ← 读取器（list/messages/export/search）
@@ -77,8 +83,8 @@ export WECHAT_DATA_ROOT="<数据根目录>"
 # 大库流式（message_0.db 必用这个）
 .venv/Scripts/python.exe scripts/windows/decrypt_stream.py \
   "$(cat key_windows.txt | tr -d '\n\r')" \
-  "D:/WeChatData/xwechat_files/wxid_example01_dev_a/db_storage/message/message_0.db" \
-  "decrypted/wxid_example01_dev_a/db_storage/message/message_0.db"
+  "$WECHAT_DATA_ROOT/<account>/db_storage/message/message_0.db" \
+  "decrypted/<account>/db_storage/message/message_0.db"
 ```
 
 ### 3. 读取
@@ -88,10 +94,10 @@ export WECHAT_DATA_ROOT="<数据根目录>"
 .venv/Scripts/python.exe scripts/windows/wxread.py list
 
 # 读某个会话（默认最后 50 条）
-.venv/Scripts/python.exe scripts/windows/wxread.py messages "00000000000@chatroom" --limit 100
+.venv/Scripts/python.exe scripts/windows/wxread.py messages "<群wxid>" --limit 100
 
 # 导出成 txt
-.venv/Scripts/python.exe scripts/windows/wxread.py export "00000000000@chatroom" out.txt
+.venv/Scripts/python.exe scripts/windows/wxread.py export "<群wxid>" out.txt
 
 # 全文搜索
 .venv/Scripts/python.exe scripts/windows/wxread.py search "关键词" --limit 100
@@ -104,7 +110,7 @@ export WECHAT_DATA_ROOT="<数据根目录>"
 ### 消息按会话分表
 
 表名 = `Msg_<md5(username)>`，一个库里几百张。
-会话 username 形如 `00000000000@chatroom`（群）或 `wxid_xxxxx`（好友）。
+会话 username 形如 `<数字>@chatroom`（群）或 `wxid_xxxxx`（好友）。
 
 ### Msg 表字段
 

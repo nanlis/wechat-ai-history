@@ -52,7 +52,7 @@ def test_emoji_body_keeps_md5_handle():
     import xmlmsg
 
     content = (
-        '<msg><emoji fromusername="wxid_example01" '
+        '<msg><emoji fromusername="wxid_sender001" '
         'tousername="49418517394@chatroom" type="1" '
         'md5="b5e237a3a15d205ca1e2dde26624c4ed" len="1024" /></msg>'
     )

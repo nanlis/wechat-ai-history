@@ -13,6 +13,7 @@ Usage:
   python wxread.py search <keyword> [--limit N]
 """
 import argparse
+import glob
 import os
 import re
 import sqlite3
@@ -20,9 +21,45 @@ import sys
 import zlib
 
 SKILL_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-STORE = os.path.join(SKILL_DIR, "decrypted", "wxid_example01_dev_a", "db_storage")
+sys.path.insert(0, SKILL_DIR)
+import accounts  # noqa: E402
+
+DECRYPTED_DIR = os.path.join(SKILL_DIR, "decrypted")
 
 MSG_DBS = ["message_1.db", "message_0.db"]  # oldest first
+
+
+def resolve_store():
+    """Locate the decrypted db_storage directory.
+
+    Works for any account: honours WECHAT_ACCOUNT, otherwise picks the
+    account with the most recently active message shard.
+    """
+    wanted = accounts.selected_account()
+    roots = accounts.decrypted_account_roots(DECRYPTED_DIR)
+    if wanted:
+        for name, storage in roots:
+            if wanted.lower() in name.lower():
+                return storage
+        raise SystemExit(
+            f"ERR: no decrypted account matching {wanted!r}; available: "
+            + ", ".join(n for n, _ in roots)
+        )
+    if not roots:
+        raise SystemExit(
+            f"ERR: no decrypted store under {DECRYPTED_DIR}; "
+            "run scripts/windows/decrypt_all.py first"
+        )
+    best, best_time = roots[0], -1.0
+    for name, storage in roots:
+        shards = glob.glob(os.path.join(storage, "message", "message_[0-9].db"))
+        newest = max((os.path.getmtime(p) for p in shards), default=0.0)
+        if newest > best_time:
+            best, best_time = storage, newest
+    return best
+
+
+STORE = resolve_store()
 
 
 def connect(path):

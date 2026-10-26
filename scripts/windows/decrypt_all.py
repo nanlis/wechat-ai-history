@@ -5,8 +5,12 @@ After extract_raw_key.py yields the raw key, this rebuilds a full plaintext mirr
 export_chat.py / transcribe_db.py (config.DB_BACKEND='sqlite3') can read it like Mac reads the
 encrypted store directly. Preserves the {wxid}_{device}/db_storage/... layout that db.py expects.
 
+ACCOUNT SCOPE: the raw key belongs to exactly one WeChat account. This script therefore probes
+every account directory under the data root and decrypts the one(s) the key actually opens, instead
+of guessing from directory timestamps. Pass --account <name-or-wxid> to pin one explicitly.
+
 Pure pycryptodome (the VM has no `cryptography`). Usage: python decrypt_all.py [raw_key_hex]
-(raw key defaults to ../../key_windows.txt).
+[--account <name>] (raw key defaults to ../../key_windows.txt).
 """
 import sys, os, glob, hashlib, tempfile
 import hmac, struct
@@ -15,9 +19,22 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 from crypto_backend import aes_cbc_decrypt as _aes_cbc_dec
 from wal_snapshot import read_snapshot
 
-SKILL_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(_HERE)))
+import accounts  # noqa: E402
+
+SKILL_DIR = os.path.dirname(os.path.dirname(_HERE))
 DECRYPTED_DIR = os.path.join(SKILL_DIR, "decrypted")
 PAGE, RESERVE, SALT_SZ = 4096, 80, 16
+
+
+def decrypted_dir() -> str:
+    """Where the plaintext mirror is written.
+
+    Reads the module attribute at call time so tests can redirect it without
+    ever touching the real decrypted store.
+    """
+    return DECRYPTED_DIR
 
 
 def decrypt_db(raw: bytes, src: str, dst: str) -> bool:
@@ -82,9 +99,31 @@ def find_storage_roots():
     return glob.glob(os.path.expanduser(r"~/Documents/xwechat_files/*/db_storage"))
 
 
-def main():
-    if len(sys.argv) > 1:
-        raw_hex = sys.argv[1].strip()
+def parse_args(argv):
+    """Accept: [raw_key_hex] [--account <name-or-wxid>]."""
+    raw_hex = None
+    account = None
+    rest = list(argv)
+    while rest:
+        item = rest.pop(0)
+        if item in ("--account", "-a"):
+            if not rest:
+                raise SystemExit("ERR: --account needs a value")
+            account = rest.pop(0)
+        elif item.startswith("--account="):
+            account = item.split("=", 1)[1]
+        elif raw_hex is None:
+            raw_hex = item
+        else:
+            raise SystemExit(f"ERR: unexpected argument {item!r}")
+    return raw_hex, account
+
+
+def main(argv=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    raw_hex, account_filter = parse_args(argv)
+    if raw_hex:
+        raw_hex = raw_hex.strip()
     else:
         key_path = os.path.join(SKILL_DIR, "key_windows.txt")
         try:
@@ -102,24 +141,46 @@ def main():
     src_roots = find_storage_roots()
     if not src_roots:
         print("ERR: no encrypted db_storage found; set WECHAT_DATA_ROOT to the xwechat_files directory if moved"); sys.exit(1)
-    src_root = max(src_roots, key=os.path.getmtime)
-    account = os.path.basename(os.path.dirname(src_root))  # {wxid}_{device}
-    dst_root = os.path.join(DECRYPTED_DIR, account, "db_storage")
 
-    ok = skip = 0
-    for src in sorted(glob.glob(os.path.join(src_root, "**", "*.db"), recursive=True)):
-        rel = os.path.relpath(src, src_root)
-        dst = os.path.join(dst_root, rel)
-        try:
-            if decrypt_db(raw, src, dst):
-                ok += 1; print("OK  ", rel)
-            else:
-                skip += 1; print("skip", rel, "(key/format mismatch or empty)")
-        except Exception as e:
-            skip += 1; print("ERR ", rel, e)
-    print(f"\n{ok} decrypted, {skip} skipped -> {dst_root}")
-    if ok:
-        print(">>> plaintext store ready; server.py / export_chat.py can now read it <<<")
+    # The key identifies the account. Probe every account directory and keep
+    # the ones this key actually opens -- never guess from timestamps.
+    matched = []
+    for src_root in src_roots:
+        name = accounts.account_name(src_root)
+        if account_filter and account_filter.lower() not in name.lower():
+            continue
+        if accounts.account_key_matches(raw, src_root):
+            matched.append(src_root)
+        else:
+            print("skip", name, "(key does not open this account)")
+
+    if not matched:
+        print("ERR: this key does not open any account under the data root.")
+        print("     If you just switched WeChat accounts, log the new one in and re-extract the key.")
+        sys.exit(1)
+
+    total_ok = total_skip = 0
+    for src_root in matched:
+        account = accounts.account_name(src_root)  # {wxid}_{device}
+        dst_root = os.path.join(decrypted_dir(), account, "db_storage")
+        print(f"\n=== account {account} ===")
+
+        ok = skip = 0
+        for src in sorted(glob.glob(os.path.join(src_root, "**", "*.db"), recursive=True)):
+            rel = os.path.relpath(src, src_root)
+            dst = os.path.join(dst_root, rel)
+            try:
+                if decrypt_db(raw, src, dst):
+                    ok += 1; print("OK  ", rel)
+                else:
+                    skip += 1; print("skip", rel, "(key/format mismatch or empty)")
+            except Exception as e:
+                skip += 1; print("ERR ", rel, e)
+        print(f"{ok} decrypted, {skip} skipped -> {dst_root}")
+        total_ok += ok; total_skip += skip
+
+    if total_ok:
+        print("\n>>> plaintext store ready; server.py / export_chat.py can now read it <<<")
     else:
         sys.exit(1)
 

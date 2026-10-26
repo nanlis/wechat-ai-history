@@ -95,7 +95,9 @@ send("SCAN DONE");
 
 
 def account_dbs():
-    root = os.environ.get("WECHAT_DATA_ROOT") or r"D:\WeChatData\xwechat_files"
+    root = os.environ.get("WECHAT_DATA_ROOT") or os.path.expanduser(
+        "~/Documents/xwechat_files"
+    )
     out = []
     for storage in glob.glob(os.path.join(root, "*", "db_storage")):
         out.extend(glob.glob(os.path.join(storage, "**", "*.db"), recursive=True))

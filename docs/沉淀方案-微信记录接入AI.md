@@ -63,6 +63,9 @@ MCP 是**能力层**，Skill 是**知识层**，两者不冲突，是上下游�
 
 ## 四、本次实测的关键数据
 
+> 以下是**某一台机器某个账号**的实测值，用来证明这套方案在百万级数据上跑得通。
+> 换账号后这些数字会变，但技术路径不变。
+
 | 项 | 数值 |
 |---|---|
 | 解密库 | 21 个 / 1.3 GB 明文 |
@@ -71,8 +74,8 @@ MCP 是**能力层**，Skill 是**知识层**，两者不冲突，是上下游�
 | 群成员 | 26,659 人 |
 | `integrity_check` | ok |
 | 微信版本 | 4.1.15.56（安装于 `<微信安装目录>\4.1.15.56`） |
-| 数据根目录 | `D:\WeChatData\xwechat_files` |
-| 活跃账号 | `wxid_example01_dev_a` |
+| 数据根目录 | `<WECHAT_DATA_ROOT>`（安装时自动探测） |
+| 账号 | 一个微信账号一个目录；密钥按账号派生 |
 | 加密参数 | SQLCipher 4 / PBKDF2-HMAC-SHA512 / 256000 次 / AES-256-CBC / page 4096 |
 
 ## 五、最有价值的技术突破（换版本要重做的东西）
@@ -133,7 +136,7 @@ mack = PBKDF2-HMAC-SHA512(enc, db_salt ^ 0x3A, 2, 32)
       "command": "<REPO>\\.venv\\Scripts\\python.exe",
       "args": ["<REPO>\\server.py"],
       "env": {
-        "WECHAT_DATA_ROOT": "<数据根目录>",
+        "WECHAT_DATA_ROOT": "<安装时探测到的数据根目录>",
         "PYTHONIOENCODING": "utf-8"
       }
     }
@@ -144,20 +147,20 @@ mack = PBKDF2-HMAC-SHA512(enc, db_salt ^ 0x3A, 2, 32)
 
 ### 目录联接（让工具能自动探测数据目录）
 ```
-C:\Users\<user>\Documents\xwechat_files  →  D:\WeChatData\xwechat_files
+C:\Users\<你>\Documents\xwechat_files  →  <你的真实数据目录>
 ```
 
 ### 手动命令（不需要 MCP 也能用）
 ```bash
-cd /d/Projects/wxdec-skill
+cd <REPO>
 V=.venv/Scripts/python.exe
 
 $V scripts/windows/wxread.py list                      # 列群（带群名）
-$V scripts/windows/wxread.py messages "00000000000@chatroom" --limit 100
-$V scripts/windows/wxread.py export "00000000000@chatroom" out.txt
-$V scripts/windows/wxread.py search "某联系人"             # 全文搜索
+$V scripts/windows/wxread.py messages "<群wxid>" --limit 100
+$V scripts/windows/wxread.py export "<群wxid>" out.txt
+$V scripts/windows/wxread.py search "关键词"             # 全文搜索
 
-WECHAT_DATA_ROOT="D:\WeChatData\xwechat_files" $V scripts/windows/decrypt_all.py   # 全量解密
+WECHAT_DATA_ROOT="<数据根目录>" $V scripts/windows/decrypt_all.py   # 全量解密（自动匹配账号）
 ```
 
 ## 七、后续路线（三选一，按优先级）

@@ -11,6 +11,7 @@ import subprocess
 
 import config
 import crypto
+import accounts
 
 
 def get_account_files_dir() -> str:
@@ -171,10 +172,7 @@ def get_my_wxid() -> str:
     """Extract the account wxid from the data directory path."""
     data_dir = find_data_dir()
     # path: .../xwechat_files/<wxid>_<device>/db_storage
-    account = os.path.basename(os.path.dirname(data_dir))
-    # strip trailing device suffix (e.g. _a254)
-    import re as _re
-    return _re.sub(r'_[^_]+$', '', account)
+    return accounts.account_wxid(data_dir)
 
 
 _data_dir_cache: tuple[tuple[str, str], str] | None = None
@@ -221,8 +219,18 @@ def _find_decrypted_data_dir() -> str:
     """Locate the db_storage root inside the decrypted output.
 
     Assumes layout .../db_storage/message/message_N.db (two levels up from the hit).
-    Picks the account with the most-recent active message shard.
+    With several decrypted accounts present, an explicit WECHAT_ACCOUNT selects
+    one; otherwise the account with the most-recently active message shard wins.
     """
+    wanted = accounts.selected_account()
+    if wanted:
+        for name, storage in accounts.decrypted_account_roots(config.DECRYPTED_DIR):
+            if wanted.lower() in name.lower():
+                return storage
+        raise FileNotFoundError(
+            f"未找到账号 {wanted!r} 的解密库，可用账号: "
+            + ", ".join(n for n, _ in accounts.decrypted_account_roots(config.DECRYPTED_DIR))
+        )
     hits = glob.glob(
         os.path.join(config.DECRYPTED_DIR, "**", "message", "message_[0-9].db"),
         recursive=True,

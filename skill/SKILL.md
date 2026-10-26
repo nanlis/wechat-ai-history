@@ -89,12 +89,23 @@ Python 解释器：`$REPO/.venv/Scripts/python.exe`（Windows）或 `$REPO/.venv
 | 最近的消息 | `wechat_recent_messages` | `days`、`limit` |
 | 近期摘要 / 待办 | `wechat_chat_summary` | `days` |
 | 系统事件（撤回/转账/群变更） | `wechat_system_events` | `event`、`days`、`limit` |
+| 本机有哪些微信账号 | `wechat_list_accounts` | 无 |
+
+## 多账号怎么办
+
+一台机器可能登录过多个微信账号，**每个账号一个目录**。raw key 是**按账号**派生的，
+所以一把 key 只开得了它所属的那个账号。
+
+- 默认读「最近活跃」的那个账号，不用管。
+- 要读特定账号：设环境变量 `WECHAT_ACCOUNT=<目录名或wxid>`，或用
+  `wechat_list_accounts` 看看有哪些账号可选。
+- 切换微信账号后要重新提 key（登录会重新派生），然后重新解密——**代码不用改**。
 
 ## 使用要点（都是实测踩出来的）
 
 ### 1. 先 list 拿 wxid，再 read
 
-`wechat_read_chat` 的 `contact` 参数要 wxid（如 `00000000000@chatroom`）。
+`wechat_read_chat` 的 `contact` 参数要 wxid（如 `<数字>@chatroom`）。
 **群名→wxid 的映射在 `wechat_list_chats` 里**，直接传群名可能匹配不上。
 群成员多、返回列表很长时，先用 `limit` 拿前几十条让用户确认。
 
@@ -123,7 +134,7 @@ Python 解释器：`$REPO/.venv/Scripts/python.exe`（Windows）或 `$REPO/.venv
 
 ### 6. 拿群成员名单
 
-群成员在 `contact.db` 的 `chat_room` 表（26,659 人）。
+群成员在 `contact.db` 的 `chat_room` 表（数量随账号而定）。
 MCP 工具没直接暴露时，用命令行读明文库（路径见下）。
 
 ## 没有 MCP 时（降级路径）
@@ -136,13 +147,13 @@ V="$REPO/.venv/Scripts/python.exe"
 "$V" "$REPO/scripts/windows/wxread.py" list
 
 # 读某群
-"$V" "$REPO/scripts/windows/wxread.py" messages "00000000000@chatroom" --limit 100
+"$V" "$REPO/scripts/windows/wxread.py" messages "<群wxid>" --limit 100
 
 # 导出 txt（5.5 万条约 40MB）
-"$V" "$REPO/scripts/windows/wxread.py" export "00000000000@chatroom" /tmp/out.txt
+"$V" "$REPO/scripts/windows/wxread.py" export "<群wxid>" /tmp/out.txt
 
 # 全文搜索（跨两个分片库）
-"$V" "$REPO/scripts/windows/wxread.py" search "某联系人"
+"$V" "$REPO/scripts/windows/wxread.py" search "关键词"
 ```
 
 也可以直接用跨平台查询内核，输出 JSON：
@@ -174,7 +185,12 @@ V="$REPO/.venv/Scripts/python.exe"
    WECHAT_DATA_ROOT="$DATA_ROOT" "$REPO/.venv/Scripts/python.exe" \
      "$REPO/scripts/windows/decrypt_all.py"
    ```
+   `decrypt_all.py` 会拿这把 key **逐个探测数据根下的所有账号目录**，只解开能打开的那一个；
+   要锁定某个账号加 `--account <目录名或wxid>`。
    676MB 的主库要用 `scripts/windows/decrypt_stream.py`（流式），否则 MemoryError。
+
+> **换账号了**：微信里切换到另一个号，重新跑上面第 3、4 步即可，代码一行不用改。
+> key 是账号级的，新账号要新 key。
 
 **详细原理、8 条已排除的死路、SQLCipher 参数**：
 `$REPO/docs/windows-4.x-key-extraction.md`

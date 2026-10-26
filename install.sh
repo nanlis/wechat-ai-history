@@ -138,7 +138,7 @@ fi
 if [ -z "$DATA_ROOT" ]; then
   echo -e "    ${YEL}没自动找到数据目录。${NC}"
   echo -e "    ${DIM}常见位置：微信设置 → 文件管理 → 打开文件夹${NC}"
-  echo -e "    ${DIM}格式示例：<数据根目录>${NC}"
+  echo -e "    ${DIM}格式示例：C:\\Users\\$USERNAME\\Documents\\xwechat_files${NC}"
   read -rp "    请手动输入数据目录（回车用默认 C:\\Users\\$USERNAME\\Documents\\xwechat_files）: " DATA_ROOT_RAW
   DATA_ROOT="$(path_bash "${DATA_ROOT_RAW:-C:/Users/$USERNAME/Documents/xwechat_files}")"
 fi

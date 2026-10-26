@@ -24,6 +24,7 @@ import appmsg  # noqa: E402
 import contacts  # noqa: E402
 import db  # noqa: E402
 import message  # noqa: E402
+import xmlmsg  # noqa: E402
 
 
 def _msg_dbs_tables():
@@ -141,6 +142,7 @@ def search(keyword: str, days: int = 30, limit: int = 50) -> dict:
     since = scan_until - days * 86400
     kw = keyword.replace("'", "''")
     kw_hex = keyword.encode("utf-8").hex().upper()
+    keyword_bytes = keyword.encode("utf-8")
     keyword_folded = keyword.casefold()
     hits = []
     seen = set()
@@ -175,10 +177,15 @@ def search(keyword: str, days: int = 30, limit: int = 50) -> dict:
                     f"AND (message_content LIKE '%{kw}%' "
                     f"OR instr(hex(message_content), '{kw_hex}') > 0)"
                 )
+                # The fallback scans compressed bodies, which cannot be matched
+                # with LIKE.  Return the raw blob instead of a hex copy: the
+                # hex round-trip doubles both the wire size and the memory
+                # held by the sorter on shards with hundreds of thousands of
+                # rows.  Keyword matching happens in Python below.
                 fallback_selects.append(
                     f"SELECT '{source}' AS source_table, local_id, server_id, "
                     f"create_time, local_type, "
-                    f"real_sender_id, hex(message_content) AS message_hex, n.user_name AS sender_wxid "
+                    f"real_sender_id, message_content AS message_body, n.user_name AS sender_wxid "
                     f"FROM {_quoted_identifier(table)} m "
                     f"LEFT JOIN Name2Id n ON n.rowid = m.real_sender_id WHERE create_time > {since} "
                     f"AND create_time <= {scan_until} "
@@ -197,6 +204,17 @@ def search(keyword: str, days: int = 30, limit: int = 50) -> dict:
 
             fallback_matches = 0
             for row in _iter_query_pages(db_path, fallback_selects):
+                # Fast path: the raw body already holds the keyword.
+                if _body_contains(row, keyword_bytes):
+                    if append_if_match(db_path, row):
+                        fallback_matches += 1
+                        if fallback_matches >= limit:
+                            break
+                    continue
+                # Slow path: the keyword may only appear in a parsed label
+                # (a card type, a media kind), never in the stored bytes.
+                if not _label_could_match(row, keyword_folded):
+                    continue
                 if append_if_match(db_path, row):
                     fallback_matches += 1
                     if fallback_matches >= limit:
@@ -414,7 +432,64 @@ def _row_content(row: dict) -> str:
             return _decode_content(bytes.fromhex(str(encoded)))
         except ValueError:
             return ""
+    body = row.get("message_body")
+    if body is not None:
+        return _decode_content(body)
     return _decode_content(row.get("message_content"))
+
+
+def _raw_body(row: dict) -> bytes:
+    """Return the stored body bytes for a row, hex-encoded or not."""
+    encoded = row.get("message_hex")
+    if encoded is not None:
+        try:
+            return bytes.fromhex(str(encoded))
+        except ValueError:
+            return b""
+    body = row.get("message_body")
+    if body is None:
+        body = row.get("message_content")
+    if isinstance(body, (bytes, bytearray)):
+        return bytes(body)
+    if isinstance(body, str):
+        return body.encode("utf-8", errors="replace")
+    return b""
+
+
+def _body_contains(row: dict, needle: bytes) -> bool:
+    """Check a stored body for a keyword, decompressing it when needed.
+
+    Compressed bodies never match in their stored form, so they are expanded
+    first.  Working on the raw bytes keeps the hex round-trip out of the hot
+    path, which matters when a shard holds hundreds of thousands of rows.
+    """
+    body = _raw_body(row)
+    if not body:
+        return False
+    if needle in body:
+        return True
+    if not message.is_zstd_body(body):
+        return False
+    try:
+        expanded = message.decode_message_content(body)
+    except Exception:
+        return False
+    return needle in expanded.encode("utf-8", errors="replace")
+
+
+def _label_could_match(row: dict, keyword_folded: str) -> bool:
+    """Cheap check for keywords that only appear in a parsed label.
+
+    Some searches match on a card kind ("视频号", "音乐分享") or a media kind
+    ("图片", "语音") rather than on anything stored in the message body.
+    Only the small set of type labels is consulted here, so the expensive
+    full parse still runs for the few rows that can possibly match.
+    """
+    type_key = message.normalize_type(row.get("local_type", ""))
+    labels = [message.MSG_TYPES.get(type_key, "")]
+    if type_key == "49":
+        labels.extend(label for _kind, label in appmsg.APP_MESSAGE_TYPES.values())
+    return any(keyword_folded in label.casefold() for label in labels if label)
 
 
 def _searchable_text(row: dict) -> str:
@@ -474,6 +549,22 @@ def _fmt_msg(row: dict) -> dict:
             "is_text": True,
             "is_system": False,
             "app": app,
+        }
+    # Image / voice / video / emoji / location bodies are XML documents.
+    # Render a readable summary instead of handing raw tags to the caller.
+    if xmlmsg.is_xml_type(type_key) and xmlmsg.is_xml_body(content):
+        xml = xmlmsg.parse_xml_message(content, row.get("local_type", ""))
+        display = xmlmsg.format_xml_message(xml)
+        return {
+            "time": message.format_time(ts),
+            "_ts": ts_int,
+            "direction": direction,
+            "type": xml["label"],
+            "event": None,
+            "content": display,
+            "is_text": True,
+            "is_system": False,
+            "xml": xml,
         }
     is_text = type_key == "1" and not content.startswith("<")
     return {

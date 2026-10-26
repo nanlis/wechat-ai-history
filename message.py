@@ -222,6 +222,15 @@ def has_zstd_decoder() -> bool:
     return bool(_zstd_decompressors())
 
 
+def is_zstd_body(content: str | bytes | bytearray | None) -> bool:
+    """True when the stored body is a zstd frame rather than plain text."""
+    if isinstance(content, (bytes, bytearray)):
+        return bytes(content).startswith(_ZSTD_MAGIC)
+    if isinstance(content, str):
+        return content.encode("utf-8", errors="replace").startswith(_ZSTD_MAGIC)
+    return False
+
+
 def decode_message_content(content: str | bytes | bytearray | None) -> str:
     """Decode one WeChat message body and remove its group-sender envelope."""
     compressed = False

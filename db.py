@@ -39,12 +39,30 @@ def _set_csv_field_size_limit() -> int:
 _set_csv_field_size_limit()
 
 
+def _tune_connection(con: sqlite3.Connection) -> None:
+    """Keep large ORDER BY sorts off the heap.
+
+    WeChat message shards hold hundreds of thousands of rows and the search
+    path sorts them by time across many tables at once.  SQLite's default
+    in-memory sorter materialises every matched row (and its hex-encoded body)
+    before yielding the first one, which is enough to exhaust memory on a
+    large shard.  Writing the temporary sorter table to disk keeps the peak
+    resident set bounded and, as a bonus, sorts faster.
+    """
+    try:
+        con.execute("PRAGMA temp_store = FILE;")
+    except sqlite3.Error:
+        # Older SQLite builds may refuse the pragma; the query still works.
+        pass
+
+
 def _exec_sqlite3(db_path: str, sql: str) -> list[sqlite3.Row]:
     uri = Path(db_path).resolve().as_uri() + "?mode=ro"
     con = sqlite3.connect(uri, uri=True)
     con.row_factory = sqlite3.Row
     try:
         con.execute("PRAGMA query_only = ON;")
+        _tune_connection(con)
         return con.execute(sql).fetchall()
     finally:
         con.close()
@@ -61,6 +79,7 @@ def iter_query(db_path: str, sql: str, batch_size: int = 500):
     con.row_factory = sqlite3.Row
     try:
         con.execute('PRAGMA query_only = ON;')
+        _tune_connection(con)
         cursor = con.execute(sql)
         while True:
             rows = cursor.fetchmany(batch_size)

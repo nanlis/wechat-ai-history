@@ -218,8 +218,29 @@ def capture_key(device, pids, page1, seconds):
     capture = KeyCapture(page1)
     sessions = {}
     hooked = set()
+    known = []
+    if pids:
+        known = [pids] if isinstance(pids, int) else list(pids)
+
+    def hook_pid(pid):
+        if pid in hooked:
+            return
+        hooked.add(pid)
+        try:
+            session = device.attach(pid)
+            script = session.create_script(JS)
+            script.on("message", capture.on_message)
+            script.load()
+            sessions[pid] = session
+            print(f"hooked pid {pid}")
+        except Exception as exc:
+            print(f"WARN: attach pid {pid} failed: {exc}")
 
     def attach_new():
+        # Hook the pids the caller already knows about first, so a caller that
+        # supplies its own list (or a test with a stub device) is honoured.
+        for pid in list(known):
+            hook_pid(pid)
         try:
             out = subprocess.run(
                 ["tasklist", "/FI", "IMAGENAME eq Weixin.exe", "/FO", "CSV", "/NH"],
@@ -228,18 +249,7 @@ def capture_key(device, pids, page1, seconds):
         except Exception:
             return
         for pid in parse_all_pids(out):
-            if pid in hooked:
-                continue
-            hooked.add(pid)
-            try:
-                session = device.attach(pid)
-                script = session.create_script(JS)
-                script.on("message", capture.on_message)
-                script.load()
-                sessions[pid] = session
-                print(f"hooked pid {pid}")
-            except Exception as exc:
-                print(f"WARN: attach pid {pid} failed: {exc}")
+            hook_pid(pid)
 
     attach_new()
     if not sessions:
